@@ -179,6 +179,7 @@ def main() -> None:
         header_app = get_header_mcp().http_app(stateless_http=True)
         app = Starlette(
             routes=[Mount("/", app=header_app)],
+            lifespan=header_app.lifespan,
         )
         app.add_middleware(
             CORSMiddleware,

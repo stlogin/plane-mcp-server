@@ -88,6 +88,7 @@ class ServerMode(Enum):
     STDIO = "stdio"
     SSE = "sse"
     HTTP = "http"
+    HEADER = "header"  # header-auth HTTP only — no OAuth required (self-hosted)
 
 
 @asynccontextmanager
@@ -171,6 +172,31 @@ def main() -> None:
             log_level="info",
             access_log=False,
         )
+        return
+
+
+    if server_mode == ServerMode.HEADER:
+        header_app = get_header_mcp().http_app(stateless_http=True)
+        app = Starlette(
+            routes=[Mount("/", app=header_app)],
+        )
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        for uv_logger_name in ("uvicorn", "uvicorn.error"):
+            uv_logger = logging.getLogger(uv_logger_name)
+            for h in uv_logger.handlers[:]:
+                uv_logger.removeHandler(h)
+            uv_handler = logging.StreamHandler(sys.stderr)
+            uv_handler.setFormatter(JSONFormatter())
+            uv_handler.addFilter(UserContextFilter())
+            uv_logger.addHandler(uv_handler)
+        logger.info("Starting header-auth HTTP server (no OAuth)")
+        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("FASTMCP_PORT", "8211")), log_level="info", access_log=False)
         return
 
 

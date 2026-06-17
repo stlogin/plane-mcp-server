@@ -2,7 +2,6 @@
 
 from fastmcp import FastMCP
 
-from plane_mcp.tools.work_item_comment_assets import register_work_item_comment_asset_tools
 from plane_mcp.tools.cycles import register_cycle_tools
 from plane_mcp.tools.initiatives import register_initiative_tools
 from plane_mcp.tools.intake import register_intake_tools
@@ -16,6 +15,7 @@ from plane_mcp.tools.states import register_state_tools
 from plane_mcp.tools.users import register_user_tools
 from plane_mcp.tools.work_item_activities import register_work_item_activity_tools
 from plane_mcp.tools.work_item_attachments import register_work_item_attachment_tools
+from plane_mcp.tools.work_item_comment_assets import register_work_item_comment_asset_tools
 from plane_mcp.tools.work_item_comments import register_work_item_comment_tools
 from plane_mcp.tools.work_item_links import register_work_item_link_tools
 from plane_mcp.tools.work_item_properties import register_work_item_property_tools

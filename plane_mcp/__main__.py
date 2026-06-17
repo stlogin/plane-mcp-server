@@ -197,7 +197,13 @@ def main() -> None:
             uv_handler.addFilter(UserContextFilter())
             uv_logger.addHandler(uv_handler)
         logger.info("Starting header-auth HTTP server (no OAuth)")
-        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("FASTMCP_PORT", "8211")), log_level="info", access_log=False)
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=int(os.getenv("FASTMCP_PORT", "8211")),
+            log_level="info",
+            access_log=False,
+        )
         return
 
 

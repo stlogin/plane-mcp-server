@@ -142,13 +142,21 @@ def register_work_item_type_tools(mcp: FastMCP) -> None:
 
         if workspace_owns_types:
             in_project = next(
-                (t for t in client.work_item_types.list(workspace_slug=workspace_slug, project_id=project_id) if (t.name or "").strip() == target),
+                (
+                    t
+                    for t in client.work_item_types.list(workspace_slug=workspace_slug, project_id=project_id)
+                    if (t.name or "").strip() == target
+                ),
                 None,
             )
             if in_project is not None:
                 return in_project
             at_workspace = next(
-                (t for t in client.workspace_work_item_types.list(workspace_slug=workspace_slug) if (t.name or "").strip() == target),
+                (
+                    t
+                    for t in client.workspace_work_item_types.list(workspace_slug=workspace_slug)
+                    if (t.name or "").strip() == target
+                ),
                 None,
             )
             if at_workspace is None:
@@ -174,7 +182,11 @@ def register_work_item_type_tools(mcp: FastMCP) -> None:
             )
 
         existing = next(
-            (t for t in client.work_item_types.list(workspace_slug=workspace_slug, project_id=project_id) if (t.name or "").strip() == target),
+            (
+                t
+                for t in client.work_item_types.list(workspace_slug=workspace_slug, project_id=project_id)
+                if (t.name or "").strip() == target
+            ),
             None,
         )
         if existing is None:

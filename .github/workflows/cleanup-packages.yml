@@ -1,0 +1,21 @@
+name: Cleanup untagged package versions
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          owner: stlogin
+          package-name: plane-mcp-server
+          package-type: container
+          delete-only-untagged-versions: true
+          min-versions-to-keep: 5
+          token: ${{ secrets.GITHUB_TOKEN }}

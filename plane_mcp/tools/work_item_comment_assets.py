@@ -231,7 +231,7 @@ def register_work_item_comment_asset_tools(mcp: FastMCP) -> None:
         if not is_image and not is_text:
             raise ValueError(
                 f"Unsupported type {asset_type!r} for {asset_name!r}. "
-                "Use get_comment_asset_url to get a direct download link instead."
+                "Use get_work_item_comment_asset_url to get a direct download link instead."
             )
 
         try:
@@ -248,7 +248,7 @@ def register_work_item_comment_asset_tools(mcp: FastMCP) -> None:
                 raise ValueError(
                     f"Image {asset_name!r} is {size / 1024 / 1024:.1f} MB, "
                     f"exceeds {_IMAGE_READ_LIMIT // 1024 // 1024} MB limit. "
-                    "Use get_comment_asset_url instead."
+                    "Use get_work_item_comment_asset_url instead."
                 )
             fmt = asset_type.removeprefix("image/")
             return Image(data=file_bytes, format=fmt)
@@ -257,6 +257,6 @@ def register_work_item_comment_asset_tools(mcp: FastMCP) -> None:
             raise ValueError(
                 f"Text {asset_name!r} is {size / 1024 / 1024:.1f} MB, "
                 f"exceeds {_TEXT_READ_LIMIT // 1024 // 1024} MB limit. "
-                "Use get_comment_asset_url instead."
+                "Use get_work_item_comment_asset_url instead."
             )
         return file_bytes.decode("utf-8", errors="replace")

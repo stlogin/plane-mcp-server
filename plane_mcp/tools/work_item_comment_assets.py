@@ -39,15 +39,8 @@ _READABLE_TEXT_TYPES: frozenset[str] = frozenset(
 
 
 def _http_session(client) -> tuple[str, dict[str, str]]:
-    """Return (base_url, auth_headers) derived from a PlaneClient instance.
-
-    Uses PLANE_BASE_URL (public URL) rather than PLANE_INTERNAL_BASE_URL so that
-    the presigned asset URLs Plane returns use the public hostname (accessible from
-    both the MCP container and browsers). Using the internal URL causes Plane to
-    embed it in presigned URLs, but files are served by MinIO — not the Django API.
-    """
-    import os
-    base_url = os.getenv("PLANE_BASE_URL") or client.config.base_path.removesuffix("/api/v1")
+    """Return (base_url, auth_headers) derived from a PlaneClient instance."""
+    base_url = client.config.base_path.removesuffix("/api/v1")
     if client.config.api_key:
         headers = {"X-API-Key": client.config.api_key}
     else:

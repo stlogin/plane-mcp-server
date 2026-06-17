@@ -70,11 +70,11 @@ def _strip_html(html: str) -> str:
     return re.sub(r"<[^>]+>", "", html or "").strip()
 
 
-def register_comment_asset_tools(mcp: FastMCP) -> None:
-    """Register comment-embedded asset tools with the MCP server."""
+def register_work_item_comment_asset_tools(mcp: FastMCP) -> None:
+    """Register work item comment asset tools with the MCP server."""
 
     @mcp.tool()
-    def list_comment_assets(
+    def list_work_item_comment_assets(
         project_id: str,
         work_item_id: str,
     ) -> list[dict[str, Any]]:
@@ -82,7 +82,8 @@ def register_comment_asset_tools(mcp: FastMCP) -> None:
 
         Comment-embedded assets appear inline in comment HTML as <image-component>
         or similar elements. They are distinct from work item attachments. Use
-        get_comment_asset_url or read_comment_asset to access the actual content.
+        get_work_item_comment_asset_url or read_work_item_comment_asset to access
+        the actual content.
 
         Args:
             project_id: UUID of the project
@@ -141,13 +142,13 @@ def register_comment_asset_tools(mcp: FastMCP) -> None:
         return results
 
     @mcp.tool()
-    def get_comment_asset_url(
+    def get_work_item_comment_asset_url(
         asset_id: str,
     ) -> dict[str, Any]:
         """Get a presigned download URL for an asset embedded in a comment.
 
-        Use list_comment_assets first to find asset IDs. The returned URL is
-        typically valid for ~1 hour and requires no Plane authentication.
+        Use list_work_item_comment_assets first to find asset IDs. The returned
+        URL is typically valid for ~1 hour and requires no Plane authentication.
 
         Args:
             asset_id: UUID of the comment asset (from list_comment_assets)
@@ -183,7 +184,7 @@ def register_comment_asset_tools(mcp: FastMCP) -> None:
         }
 
     @mcp.tool()
-    def read_comment_asset(
+    def read_work_item_comment_asset(
         asset_id: str,
     ) -> "Image | str":
         """Fetch a comment-embedded asset so the LLM can view or read it.
@@ -192,8 +193,8 @@ def register_comment_asset_tools(mcp: FastMCP) -> None:
           Images (returned as vision-readable, max 5 MB): PNG, JPEG, GIF, WEBP
           Text (returned as string, max 1 MB): TXT, MD, CSV, HTML, XML, YAML, JSON
 
-        For unsupported types (PDF, DOCX, etc.) use get_comment_asset_url instead
-        to get a direct download link.
+        For unsupported types (PDF, DOCX, etc.) use get_work_item_comment_asset_url
+        instead to get a direct download link.
 
         Args:
             asset_id: UUID of the comment asset (from list_comment_assets)

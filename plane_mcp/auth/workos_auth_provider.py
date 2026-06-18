@@ -56,6 +56,16 @@ class SloginWorkOSVerifier(WorkOSTokenVerifier):
             return None
 
         email = str(access.claims.get("email") or "").strip().lower()
+        # Reject unverified emails: with Google-only auth this is always true, but it
+        # blocks anyone who might register an @slogin.io address via another method
+        # without controlling the inbox.
+        if not access.claims.get("email_verified"):
+            logger.warning(
+                "WorkOS auth rejected: email not verified (email=%r sub=%s)",
+                email,
+                access.claims.get("sub"),
+            )
+            return None
         if self._allowed_domain and not email.endswith(f"@{self._allowed_domain}"):
             # email empty here usually means the access token lacked the "email"
             # scope, so WorkOS userinfo returned no email — see scopes_supported below.

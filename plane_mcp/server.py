@@ -65,6 +65,27 @@ def get_header_mcp():
     return header_mcp
 
 
+def get_workos_mcp(workspace_slug: str, base_url: str) -> FastMCP:
+    """Build the FastMCP instance for the WorkOS-OAuth transport (claude.ai / mobile).
+
+    One instance per workspace (claude.ai cannot send the x-workspace-slug header).
+    The WorkOS provider verifies the user (Google / slogin.io) and injects a
+    server-side Plane PAT + this workspace into the request claims.
+    """
+    from plane_mcp.auth.workos_auth_provider import build_workos_provider
+
+    workos_mcp = FastMCP(
+        "Plane MCP Server (WorkOS)",
+        instructions=SERVER_INSTRUCTIONS,
+        icons=[Icon(src="https://plane.so/favicon.ico", alt="Plane MCP Server")],
+        website_url="https://plane.so",
+        auth=build_workos_provider(workspace_slug=workspace_slug, base_url=base_url),
+    )
+    workos_mcp.add_middleware(StructuredLoggingMiddleware(include_payloads=True))
+    register_tools(workos_mcp)
+    return workos_mcp
+
+
 def get_stdio_mcp():
     stdio_mcp = FastMCP(
         "Plane MCP Server (stdio)",

@@ -14,7 +14,7 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 
-from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp
+from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp, get_workos_mcp
 
 
 class UserContextFilter(logging.Filter):
@@ -89,6 +89,7 @@ class ServerMode(Enum):
     SSE = "sse"
     HTTP = "http"
     HEADER = "header"  # header-auth HTTP only — no OAuth required (self-hosted)
+    WORKOS = "workos"  # header-auth PAT + WorkOS-OAuth (claude.ai / mobile) side by side
 
 
 @asynccontextmanager
@@ -99,6 +100,32 @@ async def combined_lifespan(oauth_app, header_app, sse_app):
         async with header_app.lifespan(header_app):
             async with sse_app.lifespan(sse_app):
                 yield
+
+
+def make_combined_lifespan(apps):
+    """Combine the lifespans of an arbitrary list of Starlette sub-apps."""
+    from contextlib import AsyncExitStack
+
+    @asynccontextmanager
+    async def _lifespan(app):
+        async with AsyncExitStack() as stack:
+            for sub in apps:
+                await stack.enter_async_context(sub.lifespan(sub))
+            yield
+
+    return lambda app: _lifespan(app)
+
+
+def configure_uvicorn_json_logging() -> None:
+    """Route uvicorn loggers through the JSON formatter + user-context filter."""
+    for uv_logger_name in ("uvicorn", "uvicorn.error"):
+        uv_logger = logging.getLogger(uv_logger_name)
+        for h in uv_logger.handlers[:]:
+            uv_logger.removeHandler(h)
+        uv_handler = logging.StreamHandler(sys.stderr)
+        uv_handler.setFormatter(JSONFormatter())
+        uv_handler.addFilter(UserContextFilter())
+        uv_logger.addHandler(uv_handler)
 
 
 def main() -> None:
@@ -174,6 +201,68 @@ def main() -> None:
         )
         return
 
+    if server_mode == ServerMode.WORKOS:
+        # Production self-hosted mode: serve the header/PAT endpoint (Claude Code, at
+        # /mcp) and one WorkOS-OAuth endpoint per workspace (claude.ai / mobile, at
+        # /mcp-oauth/<slug>/mcp) from the same process. Caddy forwards /mcp* to here,
+        # so /mcp-oauth/* needs no proxy change.
+        public_base = (os.getenv("PUBLIC_BASE_URL") or "").rstrip("/")
+        if not public_base:
+            raise ValueError("PUBLIC_BASE_URL is not set (e.g. https://plane.slogin.io)")
+        workspaces = [w.strip() for w in (os.getenv("WORKOS_WORKSPACES") or "").split(",") if w.strip()]
+        if not workspaces:
+            raise ValueError("WORKOS_WORKSPACES is not set (comma-separated workspace slugs)")
+
+        header_app = get_header_mcp().http_app(stateless_http=True)
+
+        lifespan_apps = [header_app]
+        well_known_routes: list = []
+        seen_well_known: set[str] = set()
+        oauth_mounts: list = []
+        for slug in workspaces:
+            workos_mcp = get_workos_mcp(slug, f"{public_base}/mcp-oauth/{slug}")
+            workos_app = workos_mcp.http_app(stateless_http=True)
+            lifespan_apps.append(workos_app)
+            # base_url already carries the /mcp-oauth/<slug> prefix, so the resource
+            # URL is …/mcp-oauth/<slug>/mcp and the well-known paths are unique per
+            # workspace. The shared /.well-known/oauth-authorization-server route is
+            # identical for every workspace, so register it only once.
+            for route in workos_mcp.auth.get_well_known_routes(mcp_path="/mcp"):
+                if route.path in seen_well_known:
+                    continue
+                seen_well_known.add(route.path)
+                well_known_routes.append(route)
+            oauth_mounts.append(Mount(f"/mcp-oauth/{slug}", app=workos_app))
+
+        app = Starlette(
+            routes=[
+                *well_known_routes,
+                *oauth_mounts,
+                # Header/PAT endpoint last so it acts as the /mcp catch-all.
+                Mount("/", app=header_app),
+            ],
+            lifespan=make_combined_lifespan(lifespan_apps),
+        )
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        configure_uvicorn_json_logging()
+        logger.info(
+            "Starting WORKOS server: header /mcp + WorkOS OAuth /mcp-oauth/<slug> for %s",
+            ",".join(workspaces),
+        )
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=int(os.getenv("FASTMCP_PORT", "8211")),
+            log_level="info",
+            access_log=False,
+        )
+        return
 
     if server_mode == ServerMode.HEADER:
         header_app = get_header_mcp().http_app(stateless_http=True)

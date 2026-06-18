@@ -5,6 +5,11 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Serialize runs so two quick pushes don't deploy concurrently.
+concurrency:
+  group: plane-mcp-deploy
+  cancel-in-progress: false
+
 # Registry = private ECR (ap-southeast-1). Auth via GitHub OIDC -> IAM role
 # (shared plane-github-actions-deploy role). After pushing, deploy the mcp
 # container on the prod EC2 via the fixed plane-deploy SSM document.
@@ -60,11 +65,18 @@ jobs:
             --parameters "$PARAMS" \
             --query Command.CommandId --output text)
           echo "SSM command: $CID"
-          aws ssm wait command-executed \
-            --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" || true
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
-            --query Status --output text)
+          # Poll until terminal (up to 10 min) — more robust than the SSM
+          # waiter, which gives up after ~100s and would false-fail a slow pull.
+          STATUS=Pending
+          for _ in $(seq 1 120); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+            sleep 5
+          done
           echo "=== deploy status: $STATUS ==="
           aws ssm get-command-invocation \
             --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \

@@ -1,0 +1,78 @@
+name: Build and push to ECR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Registry = private ECR (ap-southeast-1). Auth via GitHub OIDC -> IAM role
+# (shared plane-github-actions-deploy role). After pushing, deploy the mcp
+# container on the prod EC2 via the fixed plane-deploy SSM document.
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REGISTRY: 478538306315.dkr.ecr.ap-southeast-1.amazonaws.com
+  DEPLOY_ROLE: arn:aws:iam::478538306315:role/plane-github-actions-deploy
+  INSTANCE_ID: i-0027de6aa0b9e9b22
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      id-token: write # required for OIDC
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        run: echo "TAG=sha-${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64
+          tags: |
+            ${{ env.ECR_REGISTRY }}/plane-mcp-server:${{ env.TAG }}
+            ${{ env.ECR_REGISTRY }}/plane-mcp-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to EC2 (SSM)
+        run: |
+          set -euo pipefail
+          PARAMS=$(printf '{"services":["plane-mcp"],"imageTag":["%s"]}' "$TAG")
+          CID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name plane-deploy \
+            --region "$AWS_REGION" \
+            --comment "deploy plane-mcp ${TAG}" \
+            --parameters "$PARAMS" \
+            --query Command.CommandId --output text)
+          echo "SSM command: $CID"
+          aws ssm wait command-executed \
+            --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" || true
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
+            --query Status --output text)
+          echo "=== deploy status: $STATUS ==="
+          aws ssm get-command-invocation \
+            --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
+            --query StandardOutputContent --output text | tail -20
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::deploy failed ($STATUS)"
+            aws ssm get-command-invocation \
+              --command-id "$CID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
+              --query StandardErrorContent --output text | tail -20
+            exit 1
+          fi

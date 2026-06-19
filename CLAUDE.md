@@ -38,14 +38,16 @@ ruff check plane_mcp/
 
 ### Entry Point & Transport Modes
 
-`plane_mcp/__main__.py` parses a positional arg (`stdio`, `http`, or `sse`) and launches the corresponding server:
+`plane_mcp/__main__.py` parses a positional arg (`stdio`, `http`, `header`, `sse`, or `workos`) and launches the corresponding server:
 - **stdio**: Requires `PLANE_API_KEY` + `PLANE_WORKSPACE_SLUG` env vars. Runs locally.
-- **http**: Starts on port 8211 with two auth endpoints — OAuth (`/oauth/mcp`) and header-based PAT (`/http/api-key/mcp`).
+- **header**: header-auth HTTP only (`x-api-key`/Bearer + `x-workspace-slug`); no OAuth.
+- **workos** (production self-hosted, what runs on EC2): serves the **header/PAT** endpoint at `/mcp` (Claude Code) **and** the **WorkOS-OAuth** endpoint at `/connect/mcp` (claude.ai / mobile) plus the `/link` registration page, from one process.
+- **http**: Plane-OAuth (`/oauth/mcp`) + header (`/http/api-key/mcp`) — cloud/legacy model.
 - **sse**: Legacy OAuth-only SSE transport.
 
 ### Server Factories (`server.py`)
 
-Three factory functions (`get_oauth_mcp`, `get_header_mcp`, `get_stdio_mcp`) each create a `FastMCP` instance, register all tools, and configure the appropriate auth provider. OAuth/HTTP modes use Redis for token storage (falls back to in-memory).
+Factory functions (`get_oauth_mcp`, `get_header_mcp`, `get_stdio_mcp`, `get_workos_unified_mcp`) each create a `FastMCP` instance, register all tools, and configure the auth provider. `get_workos_unified_mcp` additionally applies the per-call `workspace_slug` transform and the `list_my_workspaces` tool (`tools/multi_workspace.py`).
 
 ### Client Context (`client.py`)
 
@@ -53,8 +55,9 @@ Three factory functions (`get_oauth_mcp`, `get_header_mcp`, `get_stdio_mcp`) eac
 
 ### Authentication (`auth/`)
 
-- `PlaneOAuthProvider` — Full OAuth flow with token verification against the Plane API.
-- `PlaneHeaderAuthProvider` — Simple header-based auth using `x-api-key` and `x-workspace-slug` headers.
+- `PlaneOAuthProvider` — Full OAuth flow with token verification against the Plane API (cloud/legacy `http` mode).
+- `PlaneHeaderAuthProvider` — Simple header-based auth using `x-api-key`/Bearer + `x-workspace-slug` headers (Claude Code).
+- `SloginWorkOSVerifier` / `build_workos_provider` (`auth/workos_auth_provider.py`) — WorkOS AuthKit (Google, verified `@slogin.io`) for claude.ai / mobile. After verifying, it injects the user's **own** Plane PAT — registered at `/link` and stored encrypted in SQLite (`user_pat_store.py`, `link_app.py`) — so calls run as that user (Plane RBAC scopes them). Workspace is per tool call (`tools/multi_workspace.py` tool transformation); `list_my_workspaces` enumerates the user's workspaces with a read-only query against Plane's Postgres (`workspace_directory.py`). Gated by `PER_USER_PAT_REQUIRED`.
 
 ### Tools (`tools/`)
 
@@ -86,3 +89,10 @@ Integration tests in `tests/test_integration.py` use `FastMCP.Client` with `Stre
 | `PLANE_INTERNAL_BASE_URL` | http/sse (optional) | Internal URL for server-to-server calls |
 | `REDIS_HOST` / `REDIS_PORT` | http/sse (optional) | Token storage (falls back to in-memory) |
 | `PLANE_OAUTH_PROVIDER_*` | http/sse OAuth | OAuth client credentials and base URL |
+| `PUBLIC_BASE_URL` | workos | Public base (e.g. `https://plane.slogin.io`) for OAuth resource URLs |
+| `WORKOS_AUTHKIT_DOMAIN` / `WORKOS_CLIENT_ID` | workos | WorkOS AuthKit domain + project client ID |
+| `ALLOWED_EMAIL_DOMAIN` | workos (default `slogin.io`) | Allowed verified-email domain |
+| `MCP_PAT_ENC_KEY` / `MCP_PAT_DB_PATH` | workos | Fernet key + SQLite path for the email→PAT store |
+| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | workos | Google client for the `/link` sign-in (reuses Plane's) |
+| `PER_USER_PAT_REQUIRED` | workos (default `true`) | Reject unregistered users; `false` falls back to `PLANE_API_KEY` |
+| `PLANE_READONLY_DB_URL` | workos | Read-only DSN (`mcp_readonly`) for `list_my_workspaces` |

@@ -10,7 +10,7 @@ from plane_mcp.server import get_workos_unified_mcp
 @pytest.fixture
 def unified(monkeypatch):
     monkeypatch.setenv("WORKOS_AUTHKIT_DOMAIN", "https://test.authkit.app")
-    return get_workos_unified_mcp("https://plane.slogin.io/mcp-all")
+    return get_workos_unified_mcp("https://plane.slogin.io/connect")
 
 
 def _tools_by_name(mcp):

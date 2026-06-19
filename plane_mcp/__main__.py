@@ -242,7 +242,8 @@ def main() -> None:
 
         # Unified endpoint: one URL spanning all of the user's workspaces. Workspace
         # is chosen per tool call (workspace_slug arg); the user's own PAT scopes it.
-        unified_mcp = get_workos_unified_mcp(f"{public_base}/mcp-all")
+        # Served at /connect/mcp (Caddy routes /connect* to this container).
+        unified_mcp = get_workos_unified_mcp(f"{public_base}/connect")
         unified_app = unified_mcp.http_app(stateless_http=True)
         lifespan_apps.append(unified_app)
         for route in unified_mcp.auth.get_well_known_routes(mcp_path="/mcp"):
@@ -250,7 +251,7 @@ def main() -> None:
                 continue
             seen_well_known.add(route.path)
             well_known_routes.append(route)
-        oauth_mounts.append(Mount("/mcp-all", app=unified_app))
+        oauth_mounts.append(Mount("/connect", app=unified_app))
 
         from plane_mcp.link_app import get_link_routes
 

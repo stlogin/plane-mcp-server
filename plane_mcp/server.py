@@ -68,10 +68,10 @@ def get_header_mcp():
 def get_workos_unified_mcp(base_url: str) -> FastMCP:
     """Build the WorkOS-OAuth instance that spans all of the user's workspaces (one URL).
 
-    Unlike get_workos_mcp (one workspace per URL), here the workspace is chosen
-    per tool call: every tool gains a ``workspace_slug`` argument (FastMCP tool
-    transformation), plus a ``list_my_workspaces`` tool. The user's own PAT is used,
-    so Plane RBAC limits results to the workspaces they belong to.
+    The workspace is chosen per tool call: every tool gains a ``workspace_slug``
+    argument (FastMCP tool transformation), plus a ``list_my_workspaces`` tool. The
+    user's own PAT is used, so Plane RBAC limits results to the workspaces they
+    belong to.
     """
     from plane_mcp.auth.workos_auth_provider import build_workos_provider
     from plane_mcp.tools.multi_workspace import apply_workspace_arg, register_list_my_workspaces

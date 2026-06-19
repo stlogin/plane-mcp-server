@@ -42,7 +42,7 @@ class SloginWorkOSVerifier(WorkOSTokenVerifier):
         self,
         *,
         authkit_domain: str,
-        workspace_slug: str,
+        workspace_slug: str | None,
         plane_api_key: str,
         allowed_email_domain: str,
         per_user_required: bool = True,
@@ -107,7 +107,9 @@ class SloginWorkOSVerifier(WorkOSTokenVerifier):
         # the api_key path, .token as the api key, and claims["workspace_slug"].
         claims = dict(access.claims)
         claims["auth_method"] = "api_key_env"
-        claims["workspace_slug"] = self._workspace_slug
+        # Empty on the unified endpoint (workspace_slug=None) — workspace is then
+        # supplied per tool call via the workspace_slug argument.
+        claims["workspace_slug"] = self._workspace_slug or ""
         return AccessToken(
             token=plane_token,
             client_id=access.client_id,
@@ -117,8 +119,11 @@ class SloginWorkOSVerifier(WorkOSTokenVerifier):
         )
 
 
-def build_workos_provider(*, workspace_slug: str, base_url: str) -> AuthKitProvider:
-    """Build an AuthKitProvider bound to one workspace for the OAuth transport.
+def build_workos_provider(*, workspace_slug: str | None, base_url: str) -> AuthKitProvider:
+    """Build an AuthKitProvider for the OAuth transport.
+
+    ``workspace_slug`` pins a single workspace (per-workspace endpoint); pass ``None``
+    for the unified endpoint, where the workspace is chosen per tool call.
 
     Env:
       WORKOS_AUTHKIT_DOMAIN   e.g. https://<proj>.authkit.app  (required)

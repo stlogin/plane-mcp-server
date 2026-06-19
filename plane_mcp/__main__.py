@@ -14,7 +14,13 @@ from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
 
-from plane_mcp.server import get_header_mcp, get_oauth_mcp, get_stdio_mcp, get_workos_mcp
+from plane_mcp.server import (
+    get_header_mcp,
+    get_oauth_mcp,
+    get_stdio_mcp,
+    get_workos_mcp,
+    get_workos_unified_mcp,
+)
 
 
 class UserContextFilter(logging.Filter):
@@ -233,6 +239,18 @@ def main() -> None:
                 seen_well_known.add(route.path)
                 well_known_routes.append(route)
             oauth_mounts.append(Mount(f"/mcp-oauth/{slug}", app=workos_app))
+
+        # Unified endpoint: one URL spanning all of the user's workspaces. Workspace
+        # is chosen per tool call (workspace_slug arg); the user's own PAT scopes it.
+        unified_mcp = get_workos_unified_mcp(f"{public_base}/mcp-all")
+        unified_app = unified_mcp.http_app(stateless_http=True)
+        lifespan_apps.append(unified_app)
+        for route in unified_mcp.auth.get_well_known_routes(mcp_path="/mcp"):
+            if route.path in seen_well_known:
+                continue
+            seen_well_known.add(route.path)
+            well_known_routes.append(route)
+        oauth_mounts.append(Mount("/mcp-all", app=unified_app))
 
         from plane_mcp.link_app import get_link_routes
 

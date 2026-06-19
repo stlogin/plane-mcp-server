@@ -1,5 +1,6 @@
 """Plane client initialization for MCP server."""
 
+import contextvars
 import os
 from typing import NamedTuple
 
@@ -9,6 +10,14 @@ from fastmcp.utilities.logging import get_logger
 from plane import PlaneClient
 
 logger = get_logger(__name__)
+
+# Per-call workspace override for the unified ("all workspaces") OAuth endpoint.
+# The tool-transformation wrapper (see tools/multi_workspace.py) sets this from the
+# tool's `workspace_slug` argument; get_plane_client_context() prefers it over the
+# workspace baked into the access token claims (which is empty on the unified path).
+request_workspace: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "request_workspace", default=None
+)
 
 
 class PlaneClientContext(NamedTuple):
@@ -56,6 +65,12 @@ def get_plane_client_context() -> PlaneClientContext:
             api_key = token
         else:
             access_token = token
+
+    # Unified endpoint: workspace comes per-call (from the tool's workspace_slug),
+    # carried via a contextvar, and overrides the (empty) claims workspace.
+    workspace_override = request_workspace.get(None)
+    if workspace_override:
+        workspace_slug = workspace_override
 
     if access_token:
         client = PlaneClient(

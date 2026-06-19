@@ -18,7 +18,6 @@ from plane_mcp.server import (
     get_header_mcp,
     get_oauth_mcp,
     get_stdio_mcp,
-    get_workos_mcp,
     get_workos_unified_mcp,
 )
 
@@ -208,50 +207,22 @@ def main() -> None:
         return
 
     if server_mode == ServerMode.WORKOS:
-        # Production self-hosted mode: serve the header/PAT endpoint (Claude Code, at
-        # /mcp) and one WorkOS-OAuth endpoint per workspace (claude.ai / mobile, at
-        # /mcp-oauth/<slug>/mcp) from the same process. Caddy forwards /mcp* to here,
-        # so /mcp-oauth/* needs no proxy change.
+        # Production self-hosted mode. Two endpoints from one process:
+        #   /mcp                — header/PAT (Claude Code), workspace via x-workspace-slug
+        #   /connect/mcp        — WorkOS OAuth (claude.ai / mobile), one URL across all of
+        #                         the user's workspaces (workspace chosen per tool call)
+        # Caddy forwards /mcp* and /connect* here.
         public_base = (os.getenv("PUBLIC_BASE_URL") or "").rstrip("/")
         if not public_base:
             raise ValueError("PUBLIC_BASE_URL is not set (e.g. https://plane.slogin.io)")
-        workspaces = [w.strip() for w in (os.getenv("WORKOS_WORKSPACES") or "").split(",") if w.strip()]
-        if not workspaces:
-            raise ValueError("WORKOS_WORKSPACES is not set (comma-separated workspace slugs)")
 
         header_app = get_header_mcp().http_app(stateless_http=True)
 
-        lifespan_apps = [header_app]
-        well_known_routes: list = []
-        seen_well_known: set[str] = set()
-        oauth_mounts: list = []
-        for slug in workspaces:
-            workos_mcp = get_workos_mcp(slug, f"{public_base}/mcp-oauth/{slug}")
-            workos_app = workos_mcp.http_app(stateless_http=True)
-            lifespan_apps.append(workos_app)
-            # base_url already carries the /mcp-oauth/<slug> prefix, so the resource
-            # URL is …/mcp-oauth/<slug>/mcp and the well-known paths are unique per
-            # workspace. The shared /.well-known/oauth-authorization-server route is
-            # identical for every workspace, so register it only once.
-            for route in workos_mcp.auth.get_well_known_routes(mcp_path="/mcp"):
-                if route.path in seen_well_known:
-                    continue
-                seen_well_known.add(route.path)
-                well_known_routes.append(route)
-            oauth_mounts.append(Mount(f"/mcp-oauth/{slug}", app=workos_app))
-
-        # Unified endpoint: one URL spanning all of the user's workspaces. Workspace
-        # is chosen per tool call (workspace_slug arg); the user's own PAT scopes it.
-        # Served at /connect/mcp (Caddy routes /connect* to this container).
+        # Unified OAuth endpoint: workspace is chosen per tool call (workspace_slug arg);
+        # the user's own PAT scopes it, and list_my_workspaces enumerates dynamically.
         unified_mcp = get_workos_unified_mcp(f"{public_base}/connect")
         unified_app = unified_mcp.http_app(stateless_http=True)
-        lifespan_apps.append(unified_app)
-        for route in unified_mcp.auth.get_well_known_routes(mcp_path="/mcp"):
-            if route.path in seen_well_known:
-                continue
-            seen_well_known.add(route.path)
-            well_known_routes.append(route)
-        oauth_mounts.append(Mount("/connect", app=unified_app))
+        well_known_routes = list(unified_mcp.auth.get_well_known_routes(mcp_path="/mcp"))
 
         from plane_mcp.link_app import get_link_routes
 
@@ -260,11 +231,11 @@ def main() -> None:
                 *well_known_routes,
                 # /link self-service: users bind their own Plane PAT to their email.
                 *get_link_routes(),
-                *oauth_mounts,
+                Mount("/connect", app=unified_app),
                 # Header/PAT endpoint last so it acts as the /mcp catch-all.
                 Mount("/", app=header_app),
             ],
-            lifespan=make_combined_lifespan(lifespan_apps),
+            lifespan=make_combined_lifespan([header_app, unified_app]),
         )
         app.add_middleware(
             CORSMiddleware,
@@ -274,10 +245,7 @@ def main() -> None:
             allow_headers=["*"],
         )
         configure_uvicorn_json_logging()
-        logger.info(
-            "Starting WORKOS server: header /mcp + WorkOS OAuth /mcp-oauth/<slug> for %s",
-            ",".join(workspaces),
-        )
+        logger.info("Starting WORKOS server: header /mcp + unified WorkOS OAuth /connect/mcp")
         uvicorn.run(
             app,
             host="0.0.0.0",

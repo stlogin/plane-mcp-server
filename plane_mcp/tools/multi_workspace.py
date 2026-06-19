@@ -1,21 +1,19 @@
 """Multi-workspace support for the unified WorkOS-OAuth endpoint.
 
-The per-workspace endpoints (`/mcp-oauth/<slug>`) bind one workspace via the URL.
-The unified endpoint (`/mcp-all`) instead lets the caller target any workspace they
+The unified endpoint (`/connect/mcp`) lets the caller target any workspace they
 belong to, per tool call. We do this the official FastMCP way — **tool
 transformation** (`Tool.from_tool(..., transform_fn=...)` + `forward()`): every tool
 gains a `workspace_slug` argument whose value is pushed into a contextvar that
 `get_plane_client_context()` reads, then the rest of the args are forwarded to the
 original tool unchanged. A `list_my_workspaces` tool lets the model discover which
-slugs the user can use.
+slugs the user can use (resolved dynamically from Plane's DB — see
+``workspace_directory``).
 """
 
 from __future__ import annotations
 
-import os
 from typing import Annotated, Any
 
-import httpx
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools import Tool
@@ -24,6 +22,7 @@ from fastmcp.utilities.logging import get_logger
 from pydantic import Field
 
 from plane_mcp.client import request_workspace
+from plane_mcp.workspace_directory import list_user_workspaces
 
 logger = get_logger(__name__)
 
@@ -54,33 +53,18 @@ def apply_workspace_arg(mcp: FastMCP) -> None:
 
 
 def register_list_my_workspaces(mcp: FastMCP) -> None:
-    """Add a tool that lists the workspaces the caller's token can access.
+    """Add a tool that lists the workspaces the signed-in user belongs to.
 
-    Plane's external API has no "list my workspaces" endpoint, so we probe each
-    configured candidate (`WORKOS_WORKSPACES`) with the caller's token: a 200 on the
-    members endpoint means they're a member.
+    Resolved dynamically from Plane's DB by the authenticated email, so newly
+    created workspaces appear automatically with no config to maintain.
     """
 
     @mcp.tool()
     async def list_my_workspaces() -> list[dict[str, str]]:
-        """List the Plane workspaces you can access with your linked token.
+        """List the Plane workspaces you belong to.
 
         Use the returned ``slug`` as the ``workspace_slug`` argument on other tools.
         """
         access = get_access_token()
-        api_key = access.token if access else os.getenv("PLANE_API_KEY", "")
-        base = (os.getenv("PLANE_INTERNAL_BASE_URL") or os.getenv("PLANE_BASE_URL", "")).rstrip("/")
-        candidates = [s.strip() for s in os.getenv("WORKOS_WORKSPACES", "").split(",") if s.strip()]
-
-        accessible: list[dict[str, str]] = []
-        async with httpx.AsyncClient(timeout=10, base_url=base) as client:
-            for slug in candidates:
-                try:
-                    resp = await client.get(
-                        f"/api/v1/workspaces/{slug}/members/", headers={"X-API-Key": api_key}
-                    )
-                except httpx.RequestError:
-                    continue
-                if resp.status_code == 200:
-                    accessible.append({"slug": slug})
-        return accessible
+        email = str((access.claims.get("email") if access else "") or "")
+        return await list_user_workspaces(email)

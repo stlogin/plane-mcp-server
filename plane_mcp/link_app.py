@@ -55,7 +55,8 @@ def _public_base() -> str:
 
 
 def _redirect_uri() -> str:
-    return f"{_public_base()}/link/callback"
+    # Trailing slash matches the Plane Google client's other redirect URIs.
+    return f"{_public_base()}/link/callback/"
 
 
 def _sign(purpose: str, data: dict) -> str:
@@ -298,7 +299,7 @@ def get_link_routes() -> list[Route]:
     return [
         Route("/link", link_index, methods=["GET"]),
         Route("/link/login", link_login, methods=["GET"]),
-        Route("/link/callback", link_callback, methods=["GET"]),
+        Route("/link/callback/", link_callback, methods=["GET"]),
         Route("/link/save", link_save, methods=["POST"]),
         Route("/link/delete", link_delete, methods=["POST"]),
     ]

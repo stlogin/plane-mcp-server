@@ -55,7 +55,7 @@ def test_login_redirects_to_google_with_state_cookie(client):
 
 
 def test_callback_error_param_is_escaped(client):
-    r = client.get("/link/callback", params={"error": "<script>alert(1)</script>"})
+    r = client.get("/link/callback/", params={"error": "<script>alert(1)</script>"})
     assert r.status_code == 400
     assert "<script>" not in r.text
     assert "&lt;script&gt;" in r.text
@@ -63,14 +63,14 @@ def test_callback_error_param_is_escaped(client):
 
 def test_callback_valid_state_without_cookie_rejected(client):
     state = link_app._sign("state", {"n": "abc"})
-    r = client.get("/link/callback", params={"code": "x", "state": state})
+    r = client.get("/link/callback/", params={"code": "x", "state": state})
     assert r.status_code == 400  # state not bound to this browser -> login CSRF blocked
 
 
 def test_callback_state_cookie_mismatch_rejected(client):
     state = link_app._sign("state", {"n": "abc"})
     client.cookies.set(link_app.OAUTH_STATE_COOKIE, "different")
-    r = client.get("/link/callback", params={"code": "x", "state": state})
+    r = client.get("/link/callback/", params={"code": "x", "state": state})
     assert r.status_code == 400
 
 

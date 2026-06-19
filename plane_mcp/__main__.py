@@ -234,9 +234,13 @@ def main() -> None:
                 well_known_routes.append(route)
             oauth_mounts.append(Mount(f"/mcp-oauth/{slug}", app=workos_app))
 
+        from plane_mcp.link_app import get_link_routes
+
         app = Starlette(
             routes=[
                 *well_known_routes,
+                # /link self-service: users bind their own Plane PAT to their email.
+                *get_link_routes(),
                 *oauth_mounts,
                 # Header/PAT endpoint last so it acts as the /mcp catch-all.
                 Mount("/", app=header_app),

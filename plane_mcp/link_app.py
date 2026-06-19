@@ -115,7 +115,12 @@ label{{display:block;font-size:12px;color:#9aa3b2;margin:14px 0 6px}}
 .ok{{color:#28c08a}} .err{{color:#e3859a}}
 code{{background:#0b0d12;border:1px solid #2a2f3a;border-radius:5px;padding:1px 6px;font-size:12px}}
 .muted{{color:#9aa3b2;font-size:12.5px;margin-top:14px}}
-</style></head><body><div class="card">{body}</div></body></html>"""
+.backbar{{margin-top:20px;border-top:1px solid #2a2f3a;padding-top:13px}}
+.backbar a{{color:#9aa3b2;font-size:12.5px;text-decoration:none}}
+.backbar a:hover{{color:#e7ebf3}}
+</style></head><body><div class="card">{body}
+<div class="backbar"><a href="/">&larr; Back to Plane</a></div>
+</div></body></html>"""
 
 
 def _html(body: str, status: int = 200) -> HTMLResponse:
